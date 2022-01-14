@@ -1,0 +1,15 @@
+#
+# Build set for NetSNMP
+#
+
+%define release 1
+
+#
+# The RTEMS URL paths.
+#
+%include rtems-urls.bset
+
+#
+# Build NetSNMP.
+#
+net-mgmt/net-snmp-5.7.2.1-1

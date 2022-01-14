@@ -1,0 +1,7 @@
+#
+# Ensure that the RTEMS version is defined
+#
+
+%if %{!defined rtems_version}
+ %error RTEMS version is not defined
+%endif

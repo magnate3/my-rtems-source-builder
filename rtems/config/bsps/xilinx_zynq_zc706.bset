@@ -1,0 +1,21 @@
+#
+# Xilinx Zynq ZC706
+#
+# Build into the prefix path:
+#
+#  - ARM tools
+#  - RTEMS Kernel and BSP
+#  - LibBSD
+#  - Packages
+#
+
+%define mail_single_report 1
+
+%define with_rtems_bsp xilinx_zynq_zc706
+%define rtems_target   arm-rtems%{rtems_version}
+%define rtems_host     %{rtems_target}
+
+6/rtems-arm
+6/rtems-kernel
+6/rtems-libbsd
+6/rtems-packages

@@ -1,0 +1,17 @@
+#
+# Default tools configuration.
+#
+%include 6/rtems-base.bset
+
+#
+# Build gdb first to raise the Python install error as early as possible.
+# GDB needs expat so it needs to be built before.
+#
+
+devel/expat-2.1.0-1
+devel/gmp-6.1.0
+tools/rtems-gdb-10
+
+tools/rtems-binutils-2.36
+tools/rtems-gcc-10-newlib-head
+tools/rtems-tools-6

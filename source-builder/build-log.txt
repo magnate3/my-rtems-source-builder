@@ -1,0 +1,5 @@
+RTEMS Source Builder - Set Builder, 6 (889cf95db012)
+ Command Line: ../source-builder/sb-set-builder --log=build-log.txt --prefix=/root/development/rtems/compiler/6 6/rtems-aarch64
+ Python: 2.7.5 (default, Nov 17 2020, 12:25:37) [GCC 4.8.5 20150623 (Red Hat 4.8.5-44)]
+Build Set: 6/rtems-aarch64
+Build Set: Time 0:00:00.000429
