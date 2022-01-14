@@ -1,0 +1,340 @@
+From a8f9a7404c9dee852720a9d8bab35662c63785f2 Mon Sep 17 00:00:00 2001
+From: Sebastian Huber <sebastian.huber@embedded-brains.de>
+Date: Sat, 16 Jan 2021 09:00:23 +0100
+Subject: [PATCH] nios2: Remove custom instruction warnings
+
+Do not warn if custom instructions are not used due to missing
+optimization flags.  This prevents build errors with -Werror which
+cannot be disabled via a dedicated warning option.
+
+One reason to remove these warnings is to enable a multilib for the
+"Nios II Floating Point Hardware 2 Component".  For example, the
+libatomic target library in GCC is built with -Werror and the warnings
+removed by this patch resulted in errors like:
+
+cc1: error: switch '-mcustom-fmins' has no effect unless '-ffinite-math-only' is specified [-Werror]
+cc1: error: switch '-mcustom-fmaxs' has no effect unless '-ffinite-math-only' is specified [-Werror]
+cc1: error: switch '-mcustom-round' has no effect unless '-fno-math-errno' is specified [-Werror]
+
+gcc/
+
+	* config/nios2/nios2.c (nios2_custom_check_insns): Remove
+	custom instruction warnings.
+
+nios2: Add -mcustom-fpu-cfg=fph2
+
+The new -mcustom-fpu-cfg=fph2 option variant is useful to build a
+multilib for the "Nios II Floating Point Hardware 2 Component":
+
+https://www.intel.com/content/dam/www/programmable/us/en/pdfs/literature/ug/ug_nios2_custom_instruction.pdf
+
+Directly using the corresponding -mcustom-insn=N options for this
+floating-point unit leads to a combinatorial explosion in the potential
+count of multilibs which may break the build.
+
+gcc/
+
+	* config/nios2/nios2.c (NIOS2_FPU_CONFIG_NUM): Adjust value.
+	(nios2_init_fpu_configs): Provide register values for new
+	-mcustom-fpu-cfg=fph2 option variant.
+	* doc/invoke.texi (-mcustom-fpu-cfg=fph2): Document new option
+	variant.
+
+RTEMS: Add -mcustom-fpu-cfg=fph2 multilib
+
+This multilib supports Nios II configurations with the "Nios II Floating
+Point Hardware 2 Component".
+
+gcc/
+
+	* config/nios2/t-rtems: Reset all MULTILIB_* variables.  Shorten
+	multilib directory names.  Use MULTILIB_REQUIRED instead of
+	MULTILIB_EXCEPTIONS.  Add -mhw-mul -mhw-mulx -mhw-div
+	-mcustom-fpu-cfg=fph2 multilib.
+---
+ gcc/config/nios2/nios2.c |  51 ++++++--------
+ gcc/config/nios2/t-rtems | 146 +++++----------------------------------
+ gcc/doc/invoke.texi      |  28 ++++++++
+ 3 files changed, 68 insertions(+), 157 deletions(-)
+
+diff --git a/gcc/config/nios2/nios2.c b/gcc/config/nios2/nios2.c
+index ba0a0a9ba43..fcd74bef6f5 100644
+--- a/gcc/config/nios2/nios2.c
++++ b/gcc/config/nios2/nios2.c
+@@ -1186,34 +1186,6 @@ nios2_custom_check_insns (void)
+ 	break;
+       }
+ 
+-  /* Warn if the user has certain exotic operations that won't get used
+-     without -funsafe-math-optimizations.  See expand_builtin () in
+-     builtins.c.  */
+-  if (!flag_unsafe_math_optimizations)
+-    for (i = 0; i < ARRAY_SIZE (nios2_fpu_insn); i++)
+-      if (N2FPU_ENABLED_P (i) && N2FPU_UNSAFE_P (i))
+-	warning (0, "switch %<-mcustom-%s%> has no effect unless "
+-		 "%<-funsafe-math-optimizations%> is specified",
+-		 N2FPU_NAME (i));
+-
+-  /* Warn if the user is trying to use -mcustom-fmins et. al, that won't
+-     get used without -ffinite-math-only.  See fold_builtin_fmin_fmax ()
+-     in builtins.c.  */
+-  if (!flag_finite_math_only)
+-    for (i = 0; i < ARRAY_SIZE (nios2_fpu_insn); i++)
+-      if (N2FPU_ENABLED_P (i) && N2FPU_FINITE_P (i))
+-	warning (0, "switch %<-mcustom-%s%> has no effect unless "
+-		 "%<-ffinite-math-only%> is specified", N2FPU_NAME (i));
+-
+-  /* Warn if the user is trying to use a custom rounding instruction
+-     that won't get used without -fno-math-errno.  See
+-     expand_builtin_int_roundingfn_2 () in builtins.c.  */
+-  if (flag_errno_math)
+-    for (i = 0; i < ARRAY_SIZE (nios2_fpu_insn); i++)
+-      if (N2FPU_ENABLED_P (i) && N2FPU_NO_ERRNO_P (i))
+-	warning (0, "switch %<-mcustom-%s%> has no effect unless "
+-		 "%<-fno-math-errno%> is specified", N2FPU_NAME (i));
+-
+   if (errors || custom_code_conflict)
+     fatal_error (input_location,
+ 		 "conflicting use of %<-mcustom%> switches, target attributes, "
+@@ -1236,7 +1208,7 @@ struct nios2_fpu_config
+   int code[n2fpu_code_num];
+ };
+ 
+-#define NIOS2_FPU_CONFIG_NUM 3
++#define NIOS2_FPU_CONFIG_NUM 4
+ static struct nios2_fpu_config custom_fpu_config[NIOS2_FPU_CONFIG_NUM];
+ 
+ static void
+@@ -1280,6 +1252,27 @@ nios2_init_fpu_configs (void)
+   cfg->code[n2fpu_fsubs]   = 254;
+   cfg->code[n2fpu_fdivs]   = 255;
+ 
++  NEXT_FPU_CONFIG;
++  cfg->name = "fph2";
++  cfg->code[n2fpu_fabss]   = 224;
++  cfg->code[n2fpu_fnegs]   = 225;
++  cfg->code[n2fpu_fcmpnes] = 226;
++  cfg->code[n2fpu_fcmpeqs] = 227;
++  cfg->code[n2fpu_fcmpges] = 228;
++  cfg->code[n2fpu_fcmpgts] = 229;
++  cfg->code[n2fpu_fcmples] = 230;
++  cfg->code[n2fpu_fcmplts] = 231;
++  cfg->code[n2fpu_fmaxs]   = 232;
++  cfg->code[n2fpu_fmins]   = 233;
++  cfg->code[n2fpu_round]   = 248;
++  cfg->code[n2fpu_fixsi]   = 249;
++  cfg->code[n2fpu_floatis] = 250;
++  cfg->code[n2fpu_fsqrts]  = 251;
++  cfg->code[n2fpu_fmuls]   = 252;
++  cfg->code[n2fpu_fadds]   = 253;
++  cfg->code[n2fpu_fsubs]   = 254;
++  cfg->code[n2fpu_fdivs]   = 255;
++
+ #undef NEXT_FPU_CONFIG
+   gcc_assert (i == NIOS2_FPU_CONFIG_NUM);
+ }
+diff --git a/gcc/config/nios2/t-rtems b/gcc/config/nios2/t-rtems
+index f95fa3c4717..beda8328bd2 100644
+--- a/gcc/config/nios2/t-rtems
++++ b/gcc/config/nios2/t-rtems
+@@ -1,133 +1,23 @@
+ # Custom RTEMS multilibs
+ 
+-MULTILIB_OPTIONS = mhw-mul mhw-mulx mhw-div mcustom-fadds=253 mcustom-fdivs=255 mcustom-fmuls=252 mcustom-fsubs=254
++# Reset all MULTILIB variables
++
++MULTILIB_OPTIONS	=
++MULTILIB_DIRNAMES	=
++MULTILIB_EXCEPTIONS	=
++MULTILIB_REUSE		=
++MULTILIB_MATCHES	=
++MULTILIB_REQUIRED	=
+ 
+ # Enumeration of multilibs
+ 
+-# MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fadds=253
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div/mcustom-fsubs=254
+-# MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mhw-div
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fadds=253/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fadds=253/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fadds=253/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fadds=253/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fadds=253
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-mulx
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fadds=253/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fadds=253/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fadds=253/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fadds=253/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fadds=253
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mhw-div
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fadds=253/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fadds=253/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fadds=253/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fadds=253/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fadds=253
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mul/mcustom-fsubs=254
+-# MULTILIB_EXCEPTIONS += mhw-mul
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fadds=253
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mhw-div
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fadds=253/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fadds=253/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fadds=253/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fadds=253/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fadds=253
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-mulx/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-mulx
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fadds=253/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fadds=253/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fadds=253/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fadds=253/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fadds=253
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mhw-div/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mhw-div
+-MULTILIB_EXCEPTIONS += mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mcustom-fadds=253/mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mcustom-fadds=253/mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mcustom-fadds=253/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mcustom-fadds=253/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mcustom-fadds=253/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mcustom-fadds=253
+-MULTILIB_EXCEPTIONS += mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mcustom-fdivs=255/mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mcustom-fdivs=255/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mcustom-fdivs=255
+-MULTILIB_EXCEPTIONS += mcustom-fmuls=252/mcustom-fsubs=254
+-MULTILIB_EXCEPTIONS += mcustom-fmuls=252
+-MULTILIB_EXCEPTIONS += mcustom-fsubs=254
++MULTILIB_OPTIONS  += mhw-mul mhw-mulx mhw-div
++MULTILIB_DIRNAMES += mul mulx div
++
++MULTILIB_OPTIONS  += mcustom-fadds=253 mcustom-fdivs=255 mcustom-fmuls=252 mcustom-fsubs=254 mcustom-fpu-cfg=fph2
++MULTILIB_DIRNAMES += fadds fdivs fmuls fsubs fph2
++
++MULTILIB_REQUIRED += mhw-mul
++MULTILIB_REQUIRED += mhw-mul/mhw-mulx/mhw-div
++MULTILIB_REQUIRED += mhw-mul/mhw-mulx/mhw-div/mcustom-fadds=253/mcustom-fdivs=255/mcustom-fmuls=252/mcustom-fsubs=254
++MULTILIB_REQUIRED += mhw-mul/mhw-mulx/mhw-div/mcustom-fpu-cfg=fph2
+diff --git a/gcc/doc/invoke.texi b/gcc/doc/invoke.texi
+index 7775bcc72eb..1eef9a18ab7 100644
+--- a/gcc/doc/invoke.texi
++++ b/gcc/doc/invoke.texi
+@@ -24919,6 +24919,26 @@ Currently, the following sets are defined:
+ -mcustom-fdivs=255 @gol
+ -fsingle-precision-constant}
+ 
++@option{-mcustom-fpu-cfg=fph2} is equivalent to:
++@gccoptlist{-mcustom-fabss=224 @gol
++-mcustom-fnegs=225 @gol
++-mcustom-fcmpnes=226 @gol
++-mcustom-fcmpeqs=227 @gol
++-mcustom-fcmpges=228 @gol
++-mcustom-fcmpgts=229 @gol
++-mcustom-fcmples=230 @gol
++-mcustom-fcmplts=231 @gol
++-mcustom-fmaxs=232 @gol
++-mcustom-fmins=233 @gol
++-mcustom-round=248 @gol
++-mcustom-fixsi=249 @gol
++-mcustom-floatis=250 @gol
++-mcustom-fsqrts=251 @gol
++-mcustom-fmuls=252 @gol
++-mcustom-fadds=253 @gol
++-mcustom-fsubs=254 @gol
++-mcustom-fdivs=255 @gol}
++
+ Custom instruction assignments given by individual
+ @option{-mcustom-@var{insn}=} options override those given by
+ @option{-mcustom-fpu-cfg=}, regardless of the
+@@ -24929,6 +24949,14 @@ configuration by using the @code{target("custom-fpu-cfg=@var{name}")}
+ function attribute (@pxref{Function Attributes})
+ or pragma (@pxref{Function Specific Option Pragmas}).
+ 
++The name @var{fph2} is an abbreviation for @emph{Nios II Floating Point
++Hardware 2 Component}.  Please note that the custom instructions enabled by
++@option{-mcustom-fmins=233} and @option{-mcustom-fmaxs=234} are only generated
++if @option{-ffinite-math-only} is specified.  The custom instruction enabled by
++@option{-mcustom-round=248} is only generated if @option{-fno-math-errno} is
++specified.  In contrast to the other configurations,
++@option{-fsingle-precision-constant} is not set.
++
+ @end table
+ 
+ These additional @samp{-m} options are available for the Altera Nios II
+-- 
+2.26.2
+
